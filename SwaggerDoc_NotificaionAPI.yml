@@ -1,0 +1,352 @@
+openapi: 3.0.3
+info:
+  title: Notification Service API
+  description: API for sending notifications via multiple channels (email, SMS, push) and managing user preferences
+  version: 1.0.0
+  contact:
+    name: API Support
+servers:
+  - url: https://api.example.com
+    description: Production server
+  - url: https://staging-api.example.com
+    description: Staging server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/notification:
+    post:
+      summary: Send notification
+      description: Send notifications to users via multiple channels (email, SMS, push notifications)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+            examples:
+              marketing_email:
+                summary: Marketing email notification
+                value:
+                  userId: "user123"
+                  channels:
+                    email:
+                      subject: "Special Offer Just for You!"
+                      body: "Hello {{first.name}} {{last.name}}, check out our latest deals!"
+                  type: "marketing"
+              reminder_sms:
+                summary: Reminder SMS notification
+                value:
+                  userId: "user456"
+                  channels:
+                    sms:
+                      body: "Hi {{first.name}}, your appointment is tomorrow at 2 PM"
+                  type: "reminder"
+              multi_channel:
+                summary: Multi-channel notification
+                value:
+                  userId: "user789"
+                  channels:
+                    email:
+                      subject: "Account Update"
+                      body: "Hello {{first.name}}, your account has been updated"
+                    sms:
+                      body: "Hi {{first.name}}, account updated successfully"
+                    push:
+                      body: "Account updated"
+      responses:
+        '200':
+          description: Notification request received successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSuccessResponse'
+              example:
+                status: "ready"
+                transaction_id: "d3e2ec54-dc12-41f8-aaa5-bf4500a711f9"
+        '400':
+          description: Bad request or rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationErrorResponse'
+              examples:
+                rate_limit:
+                  summary: Rate limit exceeded
+                  value:
+                    error: true
+                    status: "rate_limit"
+                invalid_user:
+                  summary: Invalid user
+                  value:
+                    error: true
+                    status: "invalid_user"
+                opt_out:
+                  summary: User opted out
+                  value:
+                    error: true
+                    status: "opt_out"
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/notification/status:
+    get:
+      summary: Get notification status
+      description: Check the delivery status of a previously sent notification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Transaction ID returned from the notification send request
+          schema:
+            type: string
+            format: uuid
+          example: "d3e2ec54-dc12-41f8-aaa5-bf4500a711f9"
+      responses:
+        '200':
+          description: Notification status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationStatusResponse'
+              examples:
+                mixed_status:
+                  summary: Mixed delivery status
+                  value:
+                    email: "done"
+                    sms: "failed"
+                    push: null
+                all_success:
+                  summary: All channels delivered
+                  value:
+                    email: "done"
+                    sms: "done"
+                    push: "done"
+                in_progress:
+                  summary: Notifications in progress
+                  value:
+                    email: "queued"
+                    sms: "retry"
+                    push: "ready"
+        '400':
+          description: Invalid or expired transaction ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "invalid or expired transaction_id"
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/user/preferences:
+    get:
+      summary: Get user notification preferences
+      description: Retrieve notification preferences for a specific user
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          description: Unique identifier for the user
+          schema:
+            type: string
+          example: "user_1"
+      responses:
+        '200':
+          description: User preferences retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferencesResponse'
+              example:
+                email: true
+                sms: false
+                push: true
+                marketing: false
+                reminders: true
+                notifications: true
+        '400':
+          description: Invalid user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "invalid user"
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication
+
+  schemas:
+    NotificationRequest:
+      type: object
+      required:
+        - userId
+        - channels
+      properties:
+        userId:
+          type: string
+          description: Unique identifier for the target user
+          example: "user123"
+        channels:
+          type: object
+          description: Notification channels and their configurations
+          minProperties: 1
+          properties:
+            email:
+              type: object
+              properties:
+                subject:
+                  type: string
+                  description: Email subject line
+                  example: "Test subject"
+                body:
+                  type: string
+                  description: Email body content (supports template variables like {{first.name}})
+                  example: "Hello {{first.name}} {{last.name}}, This is a test email body"
+              required:
+                - subject
+                - body
+            sms:
+              type: object
+              properties:
+                body:
+                  type: string
+                  description: SMS message content (supports template variables like {{first.name}})
+                  example: "Hi {{first.name}}, This is a test sms"
+              required:
+                - body
+            push:
+              type: object
+              properties:
+                body:
+                  type: string
+                  description: Push notification message
+                  example: "Test push notification"
+              required:
+                - body
+        type:
+          type: string
+          description: Type of notification
+          enum: ["marketing", "reminder", "notification", "alert"]
+          example: "marketing"
+
+    NotificationSuccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["ready"]
+          description: Status of the notification request
+        transaction_id:
+          type: string
+          format: uuid
+          description: Unique transaction identifier for tracking
+          example: "d3e2ec54-dc12-41f8-aaa5-bf4500a711f9"
+      required:
+        - status
+        - transaction_id
+
+    NotificationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: boolean
+          example: true
+        status:
+          type: string
+          enum: ["rate_limit", "invalid_user", "opt_out"]
+          description: Error status code
+      required:
+        - error
+        - status
+
+    NotificationStatusResponse:
+      type: object
+      properties:
+        email:
+          type: string
+          nullable: true
+          enum: [null, "opt_out", "ready", "queued", "retry", "failed", "done"]
+          description: Email delivery status
+        sms:
+          type: string
+          nullable: true
+          enum: [null, "opt_out", "ready", "queued", "retry", "failed", "done"]
+          description: SMS delivery status
+        push:
+          type: string
+          nullable: true
+          enum: [null, "opt_out", "ready", "queued", "retry", "failed", "done"]
+          description: Push notification delivery status
+
+    UserPreferencesResponse:
+      type: object
+      properties:
+        email:
+          type: boolean
+          description: Whether user accepts email notifications
+        sms:
+          type: boolean
+          description: Whether user accepts SMS notifications
+        push:
+          type: boolean
+          description: Whether user accepts push notifications
+        marketing:
+          type: boolean
+          description: Whether user accepts marketing communications
+        reminders:
+          type: boolean
+          description: Whether user accepts reminder notifications
+        notifications:
+          type: boolean
+          description: Whether user accepts general notifications
+      required:
+        - email
+        - sms
+        - push
+        - marketing
+        - reminders
+        - notifications
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "invalid or expired transaction_id"
+      required:
+        - error
+
+tags:
+  - name: Notifications
+    description: Operations for sending and tracking notifications
+  - name: User Preferences
+    description: Operations for managing user notification preferences
